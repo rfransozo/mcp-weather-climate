@@ -1,0 +1,27 @@
+version: 1
+name: mcp-weather-climate
+runtime: python
+entry: src/server.py
+description: >
+  Global weather & climate MCP server. Get real-time conditions, hourly and
+  daily forecasts (up to 16 days), historical weather back to 1940, long-term
+  climate normals (1991–2020), air quality (PM2.5, AQI), and marine/wave
+  forecasts. Powered by Open-Meteo — no API key required.
+tags:
+  - weather
+  - climate
+  - forecast
+  - air-quality
+  - marine
+  - open-meteo
+  - historical-weather
+  - geolocation
+  - uv-index
+  - meteorology
+
+build:
+  install: pip install -r requirements.txt
+
+startCommand:
+  type: http
+  command: python src/server.py
