@@ -74,21 +74,4 @@ All APIs are free, open-source, and do not require authentication.
 mcpize connect @rfransozo/mcp-weather-climate --client claude
 ```
 
-## Local Development
-
-```bash
-git clone https://github.com/rfransozo/mcp-weather-climate.git
-cd mcp-weather-climate
-python -m venv .venv
-.venv\Scripts\activate          # Windows
-pip install -r requirements.txt
-python src/server.py            # stdio mode
-```
-
-## Deploying on MCPize
-
-```bash
-mcpize deploy
-mcpize publish
-```
 
