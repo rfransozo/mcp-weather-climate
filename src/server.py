@@ -33,6 +33,7 @@ ARCHIVE_URL    = "https://archive-api.open-meteo.com/v1/archive"
 CLIMATE_URL    = "https://climate-api.open-meteo.com/v1/climate"
 AIR_URL        = "https://air-quality-api.open-meteo.com/v1/air-quality"
 MARINE_URL     = "https://marine-api.open-meteo.com/v1/marine"
+FLOOD_URL      = "https://flood-api.open-meteo.com/v1/flood"
 GEOCODING_URL  = "https://geocoding-api.open-meteo.com/v1/search"
 
 # -----------------------------------------------------------------
@@ -565,6 +566,463 @@ async def marine_forecast(
         "timezone": data.get("timezone"),
         "forecast_days": days,
         "hours": rows,
+    }
+
+
+# =================================================================
+# Tool 9 — pollen_forecast
+# =================================================================
+@mcp.tool()
+async def pollen_forecast(
+    latitude: float,
+    longitude: float,
+    forecast_days: int = 4,
+) -> dict:
+    """
+    Get hourly pollen forecast for Europe (alder, birch, grass, mugwort,
+    olive, and ragweed). Data provided by CAMS European Air Quality forecast.
+    Only available for European locations during the pollen season.
+
+    Args:
+        latitude: Decimal latitude (European locations only).
+        longitude: Decimal longitude.
+        forecast_days: Number of forecast days (1–4, default 4).
+    """
+    forecast_days = max(1, min(forecast_days, 4))
+    hourly_vars = ",".join([
+        "alder_pollen",
+        "birch_pollen",
+        "grass_pollen",
+        "mugwort_pollen",
+        "olive_pollen",
+        "ragweed_pollen",
+    ])
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "hourly": hourly_vars,
+        "forecast_days": forecast_days,
+        "domains": "cams_europe",
+        "timezone": "auto",
+    }
+    data   = await _get(AIR_URL, params)
+    hourly = data.get("hourly", {})
+    units  = data.get("hourly_units", {})
+    times  = hourly.get("time", [])
+
+    # Build daily peak summaries + hourly rows
+    rows = []
+    for i, t in enumerate(times):
+        row = {"time": t}
+        for k, vals in hourly.items():
+            if k == "time":
+                continue
+            row[k] = {"value": vals[i] if i < len(vals) else None, "unit": units.get(k)}
+        rows.append(row)
+
+    # Compute daily max for each pollen type
+    daily_peaks: dict[str, dict] = {}
+    for row in rows:
+        day = row["time"][:10]
+        if day not in daily_peaks:
+            daily_peaks[day] = {}
+        for k in row:
+            if k == "time":
+                continue
+            val = row[k]["value"]
+            if val is not None:
+                daily_peaks[day][k] = max(daily_peaks[day].get(k, 0.0), val)
+
+    def _pollen_level(grains: float | None) -> str:
+        if grains is None:
+            return "unknown"
+        if grains < 10:
+            return "low"
+        if grains < 30:
+            return "moderate"
+        if grains < 80:
+            return "high"
+        return "very high"
+
+    daily_summary = [
+        {
+            "date": day,
+            **{k: {"max_grains_m3": round(v, 1), "level": _pollen_level(v)}
+               for k, v in peaks.items()},
+        }
+        for day, peaks in sorted(daily_peaks.items())
+    ]
+
+    return {
+        "location": {"latitude": latitude, "longitude": longitude},
+        "timezone": data.get("timezone"),
+        "note": "Pollen data available for Europe only (CAMS European AQ forecast).",
+        "daily_summary": daily_summary,
+        "hourly": rows,
+    }
+
+
+# =================================================================
+# Tool 10 — flood_risk
+# =================================================================
+@mcp.tool()
+async def flood_risk(
+    latitude: float,
+    longitude: float,
+    forecast_days: int = 30,
+    past_days: int = 0,
+) -> dict:
+    """
+    Get daily river discharge (m³/s) for the nearest river using GloFAS v4.
+    Includes up to 7 months of forecast (210 days) and historical data from 1984.
+    Useful for flood risk assessment, river logistics, and climate research.
+
+    Args:
+        latitude: Decimal latitude.
+        longitude: Decimal longitude.
+        forecast_days: Days of forecast to return (1–210, default 30).
+        past_days: Days of past reanalysis to prepend (0–92, default 0).
+    """
+    forecast_days = max(1, min(forecast_days, 210))
+    past_days = max(0, min(past_days, 92))
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "daily": "river_discharge,river_discharge_mean,river_discharge_median,river_discharge_max,river_discharge_min",
+        "forecast_days": forecast_days,
+        "past_days": past_days,
+    }
+    data  = await _get(FLOOD_URL, params)
+    daily = data.get("daily", {})
+    units = data.get("daily_units", {})
+    dates = daily.get("time", [])
+
+    rows = []
+    for i, d in enumerate(dates):
+        row = {"date": d}
+        for k, vals in daily.items():
+            if k == "time":
+                continue
+            row[k] = {"value": vals[i] if i < len(vals) else None, "unit": units.get(k)}
+        rows.append(row)
+
+    # Simple risk classification based on discharge
+    discharges = [r["river_discharge"]["value"] for r in rows if r.get("river_discharge", {}).get("value") is not None]
+    peak = max(discharges) if discharges else None
+    baseline = sorted(discharges)[len(discharges) // 2] if discharges else None
+
+    def _flood_level(current, base) -> str:
+        if current is None or base is None or base == 0:
+            return "unknown"
+        ratio = current / base
+        if ratio < 1.5:
+            return "normal"
+        if ratio < 2.5:
+            return "elevated"
+        if ratio < 4.0:
+            return "high"
+        return "extreme"
+
+    return {
+        "location": {"latitude": latitude, "longitude": longitude},
+        "data_source": "GloFAS v4 (Global Flood Awareness System)",
+        "note": "Nearest river within 5 km. Adjust coordinates by ±0.1° if discharge is zero.",
+        "forecast_days": forecast_days,
+        "peak_discharge_m3s": peak,
+        "median_discharge_m3s": baseline,
+        "peak_risk_level": _flood_level(peak, baseline),
+        "days": rows,
+    }
+
+
+# =================================================================
+# Tool 11 — solar_radiation_forecast
+# =================================================================
+@mcp.tool()
+async def solar_radiation_forecast(
+    latitude: float,
+    longitude: float,
+    days: int = 7,
+    tilt: float | None = None,
+    azimuth: float | None = None,
+) -> dict:
+    """
+    Get hourly solar radiation forecast for solar energy planning and research.
+    Returns global horizontal irradiance (GHI), direct normal irradiance (DNI),
+    diffuse irradiance (DHI), sunshine duration, and UV index.
+    Optionally compute irradiance on a tilted panel (global_tilted_irradiance).
+
+    Args:
+        latitude: Decimal latitude.
+        longitude: Decimal longitude.
+        days: Forecast horizon in days (1–16, default 7).
+        tilt: Panel tilt angle in degrees (0–90). If omitted, GHI only.
+        azimuth: Panel azimuth in degrees (0=south, -90=east, 90=west). Required with tilt.
+    """
+    days = max(1, min(days, 16))
+    hourly_vars = [
+        "shortwave_radiation",
+        "direct_radiation",
+        "direct_normal_irradiance",
+        "diffuse_radiation",
+        "sunshine_duration",
+        "uv_index",
+    ]
+    if tilt is not None:
+        hourly_vars.append("global_tilted_irradiance")
+
+    params: dict = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "hourly": ",".join(hourly_vars),
+        "forecast_days": days,
+        "timezone": "auto",
+    }
+    if tilt is not None:
+        params["tilt"] = tilt
+    if azimuth is not None:
+        params["azimuth"] = azimuth
+
+    data   = await _get(FORECAST_URL, params)
+    hourly = data.get("hourly", {})
+    units  = data.get("hourly_units", {})
+    times  = hourly.get("time", [])
+
+    rows = []
+    for i, t in enumerate(times):
+        row = {"time": t}
+        for k, vals in hourly.items():
+            if k == "time":
+                continue
+            row[k] = {"value": vals[i] if i < len(vals) else None, "unit": units.get(k)}
+        rows.append(row)
+
+    # Daily totals for shortwave_radiation (MJ/m²)
+    daily_sums: dict[str, float] = {}
+    for row in rows:
+        day = row["time"][:10]
+        val = row.get("shortwave_radiation", {}).get("value")
+        if val is not None:
+            daily_sums[day] = round(daily_sums.get(day, 0.0) + val / 1000, 3)  # W/m² → kWh/m²
+
+    return {
+        "location": {"latitude": latitude, "longitude": longitude},
+        "timezone": data.get("timezone"),
+        "panel_tilt": tilt,
+        "panel_azimuth": azimuth,
+        "daily_ghi_kwh_m2": [{"date": d, "kwh_m2": v} for d, v in sorted(daily_sums.items())],
+        "hourly": rows,
+    }
+
+
+# =================================================================
+# Tool 12 — severe_weather_outlook
+# =================================================================
+@mcp.tool()
+async def severe_weather_outlook(
+    latitude: float,
+    longitude: float,
+    days: int = 3,
+) -> dict:
+    """
+    Compute a severe weather risk outlook using CAPE, lightning potential,
+    freezing level, wind gusts, and precipitation probability.
+    Returns a daily risk level (low / moderate / high / extreme) plus the
+    raw instability variables per hour.
+
+    Args:
+        latitude: Decimal latitude.
+        longitude: Decimal longitude.
+        days: Forecast horizon in days (1–7, default 3).
+    """
+    days = max(1, min(days, 7))
+    hourly_vars = ",".join([
+        "cape",
+        "wind_gusts_10m",
+        "precipitation_probability",
+        "precipitation",
+        "freezing_level_height",
+        "weather_code",
+        "temperature_2m",
+        "snowfall",
+    ])
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "hourly": hourly_vars,
+        "forecast_days": days,
+        "timezone": "auto",
+    }
+    data   = await _get(FORECAST_URL, params)
+    hourly = data.get("hourly", {})
+    units  = data.get("hourly_units", {})
+    times  = hourly.get("time", [])
+
+    rows = []
+    for i, t in enumerate(times):
+        row = {"time": t}
+        for k, vals in hourly.items():
+            if k == "time":
+                continue
+            row[k] = {"value": vals[i] if i < len(vals) else None, "unit": units.get(k)}
+        rows.append(row)
+
+    # Score each hour: CAPE + gusts + lightning-like WMO codes
+    SEVERE_WMO = {95, 96, 99}  # thunderstorms
+
+    def _hour_score(row: dict) -> int:
+        score = 0
+        cape = (row.get("cape") or {}).get("value") or 0
+        gusts = (row.get("wind_gusts_10m") or {}).get("value") or 0
+        precip_prob = (row.get("precipitation_probability") or {}).get("value") or 0
+        wmo = (row.get("weather_code") or {}).get("value")
+
+        if cape > 1000:
+            score += 3
+        elif cape > 500:
+            score += 2
+        elif cape > 100:
+            score += 1
+
+        if gusts > 80:
+            score += 3
+        elif gusts > 60:
+            score += 2
+        elif gusts > 40:
+            score += 1
+
+        if precip_prob > 80:
+            score += 1
+
+        if wmo and int(wmo) in SEVERE_WMO:
+            score += 3
+
+        return score
+
+    def _score_to_level(s: int) -> str:
+        if s >= 7:
+            return "extreme"
+        if s >= 4:
+            return "high"
+        if s >= 2:
+            return "moderate"
+        return "low"
+
+    # Aggregate to daily
+    daily_scores: dict[str, list[int]] = {}
+    for row in rows:
+        day = row["time"][:10]
+        daily_scores.setdefault(day, []).append(_hour_score(row))
+
+    daily_outlook = [
+        {
+            "date": day,
+            "risk_level": _score_to_level(max(scores)),
+            "max_hour_score": max(scores),
+        }
+        for day, scores in sorted(daily_scores.items())
+    ]
+
+    return {
+        "location": {"latitude": latitude, "longitude": longitude},
+        "timezone": data.get("timezone"),
+        "daily_outlook": daily_outlook,
+        "hourly_instability": rows,
+    }
+
+
+# =================================================================
+# Tool 13 — agricultural_conditions
+# =================================================================
+@mcp.tool()
+async def agricultural_conditions(
+    latitude: float,
+    longitude: float,
+    days: int = 7,
+    temperature_unit: Literal["celsius", "fahrenheit"] = "celsius",
+) -> dict:
+    """
+    Get agricultural weather conditions: soil temperature and moisture
+    at four depths, reference evapotranspiration (ET₀ FAO-56), vapour
+    pressure deficit, and evapotranspiration. Useful for irrigation planning,
+    crop management, and agri-insurance workflows.
+
+    Args:
+        latitude: Decimal latitude.
+        longitude: Decimal longitude.
+        days: Forecast horizon in days (1–16, default 7).
+        temperature_unit: 'celsius' or 'fahrenheit'.
+    """
+    days = max(1, min(days, 16))
+    hourly_vars = ",".join([
+        # Soil temperature (4 depths)
+        "soil_temperature_0cm",
+        "soil_temperature_6cm",
+        "soil_temperature_18cm",
+        "soil_temperature_54cm",
+        # Soil moisture (4 depths)
+        "soil_moisture_0_to_1cm",
+        "soil_moisture_1_to_3cm",
+        "soil_moisture_3_to_9cm",
+        "soil_moisture_9_to_27cm",
+        # Evapotranspiration
+        "et0_fao_evapotranspiration",
+        "evapotranspiration",
+        # Atmospheric
+        "vapour_pressure_deficit",
+        "relative_humidity_2m",
+        "temperature_2m",
+        "precipitation",
+        "wind_speed_10m",
+    ])
+    daily_vars = ",".join([
+        "et0_fao_evapotranspiration",
+        "precipitation_sum",
+        "temperature_2m_max",
+        "temperature_2m_min",
+        "wind_speed_10m_max",
+    ])
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "hourly": hourly_vars,
+        "daily": daily_vars,
+        "forecast_days": days,
+        "temperature_unit": temperature_unit,
+        "timezone": "auto",
+    }
+    data   = await _get(FORECAST_URL, params)
+    hourly = data.get("hourly", {})
+    h_units = data.get("hourly_units", {})
+    daily  = data.get("daily", {})
+    d_units = data.get("daily_units", {})
+    times  = hourly.get("time", [])
+    dates  = daily.get("time", [])
+
+    hourly_rows = []
+    for i, t in enumerate(times):
+        row = {"time": t}
+        for k, vals in hourly.items():
+            if k == "time":
+                continue
+            row[k] = {"value": vals[i] if i < len(vals) else None, "unit": h_units.get(k)}
+        hourly_rows.append(row)
+
+    daily_rows = []
+    for i, d in enumerate(dates):
+        row = {"date": d}
+        for k, vals in daily.items():
+            if k == "time":
+                continue
+            row[k] = {"value": vals[i] if i < len(vals) else None, "unit": d_units.get(k)}
+        daily_rows.append(row)
+
+    return {
+        "location": {"latitude": latitude, "longitude": longitude},
+        "timezone": data.get("timezone"),
+        "temperature_unit": temperature_unit,
+        "daily_summary": daily_rows,
+        "hourly_soil_and_evapo": hourly_rows,
     }
 
 
