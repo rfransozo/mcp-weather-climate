@@ -13,11 +13,11 @@ tags:
   - forecast
   - air-quality
   - marine
+  - flood-risk
+  - pollen
+  - solar-radiation
+  - agriculture
   - open-meteo
-  - historical-weather
-  - geolocation
-  - uv-index
-  - meteorology
 
 build:
   install: pip install -r requirements.txt
