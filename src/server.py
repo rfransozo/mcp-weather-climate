@@ -10,8 +10,13 @@ import logging
 from typing import Literal
 
 import httpx
+import uvicorn
 from fastmcp import FastMCP
 from dotenv import load_dotenv
+from starlette.applications import Starlette
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+from starlette.routing import Mount, Route
 
 load_dotenv()
 
@@ -1054,12 +1059,30 @@ def _wmo_description(code) -> str | None:
 # =================================================================
 # Entrypoint — detecta modo stdio (MCPize) vs HTTP local
 # =================================================================
+async def _health(request: Request) -> JSONResponse:
+    """Health check endpoint for MCPize probes."""
+    return JSONResponse({"status": "ok", "service": "mcp-weather-climate"})
+
+
 if __name__ == "__main__":
     port_start = os.getenv("UPSTREAM_PORT_START")
     if port_start:
         port = int(port_start)
-        log.info("Starting HTTP/SSE transport on port %d", port)
-        mcp.run(transport="streamable-http", host="0.0.0.0", port=port, path="/mcp")
+        log.info("Starting HTTP transport on port %d", port)
+        # json_response=True: POST /mcp returns plain JSON (no SSE),
+        # which prevents 406 on health probes that don't set Accept: text/event-stream.
+        mcp_app = mcp.http_app(
+            path="/mcp",
+            transport="streamable-http",
+            json_response=True,
+        )
+        app = Starlette(
+            routes=[
+                Route("/health", _health, methods=["GET", "HEAD"]),
+                Mount("/", app=mcp_app),
+            ]
+        )
+        uvicorn.run(app, host="0.0.0.0", port=port)
     else:
         log.info("Starting stdio transport")
         mcp.run(transport="stdio")
