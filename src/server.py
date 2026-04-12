@@ -7,7 +7,7 @@ via Open-Meteo — 100% free, no API key required.
 import os
 import sys
 import logging
-from typing import Literal
+from typing import Literal, Optional
 
 import httpx
 import uvicorn
@@ -748,8 +748,8 @@ async def solar_radiation_forecast(
     latitude: float,
     longitude: float,
     days: int = 7,
-    tilt: float | None = None,
-    azimuth: float | None = None,
+    tilt: Optional[float] = None,
+    azimuth: Optional[float] = None,
 ) -> dict:
     """
     Get hourly solar radiation forecast for solar energy planning and research.
@@ -1074,7 +1074,6 @@ if __name__ == "__main__":
         mcp_app = mcp.http_app(
             path="/mcp",
             transport="streamable-http",
-            json_response=True,
         )
         app = Starlette(
             routes=[
