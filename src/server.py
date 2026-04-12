@@ -10,13 +10,11 @@ import logging
 from typing import Literal, Optional
 
 import httpx
-import uvicorn
 from fastmcp import FastMCP
 from dotenv import load_dotenv
-from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.routing import Mount, Route
+from starlette.routing import Route
 
 load_dotenv()
 
@@ -1064,24 +1062,22 @@ async def _health(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "service": "mcp-weather-climate"})
 
 
+# Inject /health into FastMCP's internal Starlette app — avoids
+# wrapping the app in another Starlette layer (which breaks lifespan).
+import types as _types
+
+def _extra_routes(self) -> list:
+    return [Route("/health", _health, methods=["GET", "HEAD"])]
+
+mcp._get_additional_http_routes = _types.MethodType(_extra_routes, mcp)
+
+
 if __name__ == "__main__":
     port_start = os.getenv("UPSTREAM_PORT_START")
     if port_start:
         port = int(port_start)
-        log.info("Starting HTTP transport on port %d", port)
-        # json_response=True: POST /mcp returns plain JSON (no SSE),
-        # which prevents 406 on health probes that don't set Accept: text/event-stream.
-        mcp_app = mcp.http_app(
-            path="/mcp",
-            transport="streamable-http",
-        )
-        app = Starlette(
-            routes=[
-                Route("/health", _health, methods=["GET", "HEAD"]),
-                Mount("/", app=mcp_app),
-            ]
-        )
-        uvicorn.run(app, host="0.0.0.0", port=port)
+        log.info("Starting streamable-HTTP transport on port %d", port)
+        mcp.run(transport="streamable-http", host="0.0.0.0", port=port, path="/mcp")
     else:
         log.info("Starting stdio transport")
         mcp.run(transport="stdio")
