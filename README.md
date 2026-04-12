@@ -4,9 +4,10 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-green)](https://python.org)
 [![FastMCP](https://img.shields.io/badge/FastMCP-3.x-orange)](https://fastmcp.com)
 
-Global weather & climate data directly from your AI assistant — real-time conditions,
-16-day forecasts, historical records back to 1940, climate normals, air quality, and
-marine/wave forecasts. Powered by [Open-Meteo](https://open-meteo.com/) — no API key required.
+13 tools giving AI assistants instant access to global weather, climate, and environmental
+data — real-time conditions, 16-day forecasts, historical records back to 1940, air quality,
+marine forecasts, pollen, flood risk, solar radiation, severe weather outlook, and agricultural
+soil data. Powered by [Open-Meteo](https://open-meteo.com/) — no API key required.
 
 ## What you can do
 
@@ -26,6 +27,16 @@ marine/wave forecasts. Powered by [Open-Meteo](https://open-meteo.com/) — no A
 
 - **`marine_forecast`** — Hourly ocean and wave data for coastal or offshore locations: wave height, wave period, wave direction, swell, wind waves, and ocean current velocity — up to 7 days.
 
+- **`pollen_forecast`** *(Europe)* — Daily pollen levels (low/moderate/high/very high) for alder, birch, grass, mugwort, olive, and ragweed — powered by CAMS European Air Quality forecast.
+
+- **`flood_risk`** — Daily river discharge forecasts via GloFAS v4 with up to 7 months of outlook and reanalysis from 1984. Returns peak discharge and risk level (normal/elevated/high/extreme).
+
+- **`solar_radiation_forecast`** — Hourly GHI, DNI, DHI, sunshine duration, and UV index. Optional tilted-panel irradiance (GTI) for solar energy planning.
+
+- **`severe_weather_outlook`** — Daily risk score (low/moderate/high/extreme) computed from CAPE, wind gusts, lightning potential, and precipitation probability.
+
+- **`agricultural_conditions`** — Soil temperature and moisture at 4 depths, ET₀ FAO-56 reference evapotranspiration, and vapour pressure deficit for irrigation and crop management.
+
 ## Tools
 
 | Tool | Description |
@@ -38,14 +49,20 @@ marine/wave forecasts. Powered by [Open-Meteo](https://open-meteo.com/) — no A
 | `climate_normals` | 1991–2020 monthly climate averages (CMIP6) |
 | `air_quality` | PM2.5, PM10, NO₂, SO₂, ozone, EU/US AQI — up to 7 days |
 | `marine_forecast` | Wave height/period/direction, swell, ocean currents — up to 7 days |
+| `pollen_forecast` | Daily pollen levels by species (Europe, CAMS) |
+| `flood_risk` | River discharge forecast and risk level via GloFAS v4 |
+| `solar_radiation_forecast` | GHI, DNI, DHI, GTI panel irradiance, UV index |
+| `severe_weather_outlook` | CAPE-based daily severe weather risk score |
+| `agricultural_conditions` | Soil temp/moisture (4 depths), ET₀, vapour pressure deficit |
 
 ## Why use this server?
 
 - **Zero setup** — No API keys, no accounts, no rate-limit worries for reasonable use
 - **Global coverage** — Works for any latitude/longitude on Earth
-- **Historical depth** — 80+ years of historical records since 1940
+- **Unique data** — Flood risk (GloFAS), CAPE-based severe outlook, and pollen — not available in any other MCP weather server
+- **Historical depth** — 80+ years of daily records since 1940
 - **Climate intelligence** — 30-year CMIP6 normals for long-term planning
-- **Multi-domain** — Standard weather + air quality + marine in a single server
+- **Multi-domain** — Standard weather + air quality + marine + agriculture + solar energy in a single server
 
 ## Data Sources
 
@@ -56,15 +73,20 @@ marine/wave forecasts. Powered by [Open-Meteo](https://open-meteo.com/) — no A
 - **Open-Meteo Marine API** — `https://marine-api.open-meteo.com`
 - **Open-Meteo Geocoding API** — `https://geocoding-api.open-meteo.com`
 
-All APIs are free, open-source, and do not require authentication.
+All Open-Meteo APIs are free, open-source, and do not require authentication.
+
+- **CAMS European Air Quality Forecast** — `https://air-quality-api.open-meteo.com` (pollen)
+- **GloFAS v4 (Copernicus)** — via `https://flood-api.open-meteo.com` (river discharge & flood risk)
 
 ## Ideal for
 
 ✔ Travel apps and AI trip planners  
-✔ Agricultural and logistics decision support  
-✔ Real estate and infrastructure analysis  
-✔ Academic and environmental research  
-✔ Embedding climate context into LLM workflows
+✔ Agricultural platforms and irrigation decision tools  
+✔ Solar and renewable energy planning  
+✔ Allergy and health apps (European pollen season)  
+✔ Flood risk assessment and river logistics management  
+✔ Severe weather alert systems and insurance underwriting  
+✔ Academic climate research and environmental dashboards
 
 ## Use on MCPize
 
