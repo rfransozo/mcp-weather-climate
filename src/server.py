@@ -1077,7 +1077,10 @@ if __name__ == "__main__":
     if port_start:
         port = int(port_start)
         log.info("Starting streamable-HTTP transport on port %d", port)
-        mcp.run(transport="streamable-http", host="0.0.0.0", port=port, path="/mcp")
+        # json_response=True: respond with application/json instead of text/event-stream.
+        # Fixes 406 on MCPize health probes that don't send Accept: text/event-stream.
+        # Valid per MCP Streamable HTTP spec — servers may respond with either SSE or JSON.
+        mcp.run(transport="streamable-http", host="0.0.0.0", port=port, path="/mcp", json_response=True)
     else:
         log.info("Starting stdio transport")
         mcp.run(transport="stdio")
