@@ -7,6 +7,7 @@ via Open-Meteo — 100% free, no API key required.
 import os
 import sys
 import logging
+import types as _types
 from typing import Literal, Optional
 
 import httpx
@@ -50,9 +51,18 @@ mcp = FastMCP("mcp-weather-climate")
 # -----------------------------------------------------------------
 async def _get(url: str, params: dict) -> dict:
     async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.get(url, params=params)
-        resp.raise_for_status()
-        return resp.json()
+        try:
+            resp = await client.get(url, params=params)
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPStatusError as exc:
+            raise RuntimeError(
+                f"Upstream API returned HTTP {exc.response.status_code}. Try again later."
+            ) from exc
+        except httpx.RequestError as exc:
+            raise RuntimeError(
+                f"Network error ({type(exc).__name__}). Check your connection."
+            ) from exc
 
 
 # =================================================================
@@ -78,7 +88,7 @@ async def geocode_location(
     data = await _get(GEOCODING_URL, {"name": name, "count": count, "language": language, "format": "json"})
     results = data.get("results", [])
     if not results:
-        return {"error": f"No location found for '{name}'"}
+        raise ValueError(f"No location found for '{name}'. Try a different spelling or a nearby city.")
     return {
         "query": name,
         "results": [
@@ -1064,8 +1074,6 @@ async def _health(request: Request) -> JSONResponse:
 
 # Inject /health into FastMCP's internal Starlette app — avoids
 # wrapping the app in another Starlette layer (which breaks lifespan).
-import types as _types
-
 def _extra_routes(self) -> list:
     return [Route("/health", _health, methods=["GET", "HEAD"])]
 
