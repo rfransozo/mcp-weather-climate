@@ -65,6 +65,13 @@ async def _get(url: str, params: dict) -> dict:
             ) from exc
 
 
+def _check_coords(lat: float, lon: float) -> None:
+    if not (-90 <= lat <= 90):
+        raise ValueError(f"latitude must be between -90 and 90 (got {lat}).")
+    if not (-180 <= lon <= 180):
+        raise ValueError(f"longitude must be between -180 and 180 (got {lon}).")
+
+
 # =================================================================
 # Tool 1 — geocode_location
 # =================================================================
@@ -120,15 +127,17 @@ async def current_weather(
 ) -> dict:
     """
     Get real-time current weather conditions for any location.
+    If you only have a city name, call geocode_location first to get coordinates.
     Returns temperature, apparent temperature, humidity, precipitation,
     wind speed/direction, UV index, cloud cover, and weather condition code.
 
     Args:
-        latitude: Decimal latitude (-90 to 90).
-        longitude: Decimal longitude (-180 to 180).
+        latitude: Decimal latitude (-90 to 90). Get from geocode_location if you only have a city name.
+        longitude: Decimal longitude (-180 to 180). Get from geocode_location if you only have a city name.
         temperature_unit: 'celsius' (default) or 'fahrenheit'.
         wind_speed_unit: 'kmh' (default), 'mph', 'ms', or 'kn'.
     """
+    _check_coords(latitude, longitude)
     current_vars = ",".join([
         "temperature_2m",
         "apparent_temperature",
@@ -179,14 +188,17 @@ async def hourly_forecast(
     Get hourly weather forecast for the next 1–16 days.
     Includes temperature, precipitation probability, precipitation, wind speed,
     humidity, cloud cover, UV index, visibility, and weather code per hour.
+    Use for detailed hour-by-hour analysis (e.g. best time to go outdoors, hourly temperature curves).
+    For a concise day-level summary, use daily_forecast instead.
 
     Args:
-        latitude: Decimal latitude.
-        longitude: Decimal longitude.
+        latitude: Decimal latitude (-90 to 90). Call geocode_location first if you only have a city name.
+        longitude: Decimal longitude (-180 to 180). Call geocode_location first if you only have a city name.
         days: Forecast horizon in days (1–16, default 3).
         temperature_unit: 'celsius' or 'fahrenheit'.
         wind_speed_unit: 'kmh', 'mph', 'ms', or 'kn'.
     """
+    _check_coords(latitude, longitude)
     days = max(1, min(days, 16))
     hourly_vars = ",".join([
         "temperature_2m",
@@ -249,14 +261,17 @@ async def daily_forecast(
     Get daily weather forecast for the next 1–16 days.
     Returns min/max temperature, precipitation sum, max wind speed,
     UV index max, sunrise/sunset, and dominant weather code per day.
+    Use for day-level planning (e.g. weekly outlook, travel planning, rain probability per day).
+    For hour-by-hour detail within each day, use hourly_forecast instead.
 
     Args:
-        latitude: Decimal latitude.
-        longitude: Decimal longitude.
+        latitude: Decimal latitude (-90 to 90). Call geocode_location first if you only have a city name.
+        longitude: Decimal longitude (-180 to 180). Call geocode_location first if you only have a city name.
         days: Number of days to forecast (1–16, default 7).
         temperature_unit: 'celsius' or 'fahrenheit'.
         wind_speed_unit: 'kmh', 'mph', 'ms', or 'kn'.
     """
+    _check_coords(latitude, longitude)
     days = max(1, min(days, 16))
     daily_vars = ",".join([
         "weather_code",
@@ -328,13 +343,14 @@ async def historical_weather(
     for each day in the requested period.
 
     Args:
-        latitude: Decimal latitude.
-        longitude: Decimal longitude.
+        latitude: Decimal latitude (-90 to 90). Call geocode_location first if you only have a city name.
+        longitude: Decimal longitude (-180 to 180). Call geocode_location first if you only have a city name.
         start_date: Start date in YYYY-MM-DD format (earliest: 1940-01-01).
         end_date: End date in YYYY-MM-DD format.
         temperature_unit: 'celsius' or 'fahrenheit'.
         wind_speed_unit: 'kmh', 'mph', 'ms', or 'kn'.
     """
+    _check_coords(latitude, longitude)
     daily_vars = ",".join([
         "weather_code",
         "temperature_2m_max",
@@ -403,11 +419,12 @@ async def climate_normals(
     — ideal for understanding typical climate patterns of a place.
 
     Args:
-        latitude: Decimal latitude.
-        longitude: Decimal longitude.
+        latitude: Decimal latitude (-90 to 90). Call geocode_location first if you only have a city name.
+        longitude: Decimal longitude (-180 to 180). Call geocode_location first if you only have a city name.
         temperature_unit: 'celsius' or 'fahrenheit'.
         wind_speed_unit: 'kmh', 'mph', 'ms', or 'kn'.
     """
+    _check_coords(latitude, longitude)
     daily_vars = ",".join([
         "temperature_2m_max",
         "temperature_2m_min",
@@ -471,12 +488,15 @@ async def air_quality(
     """
     Get current and forecast air quality data including PM2.5, PM10, CO, NO2,
     SO2, ozone, European and US AQI, and dust concentration.
+    NOTE: For health-sensitive decisions (respiratory conditions, outdoor exercise), consult
+    local public health guidelines and a qualified physician.
 
     Args:
-        latitude: Decimal latitude.
-        longitude: Decimal longitude.
+        latitude: Decimal latitude (-90 to 90). Call geocode_location first if you only have a city name.
+        longitude: Decimal longitude (-180 to 180). Call geocode_location first if you only have a city name.
         forecast_days: Number of days of hourly forecast (1–7, default 1).
     """
+    _check_coords(latitude, longitude)
     forecast_days = max(1, min(forecast_days, 7))
     hourly_vars = ",".join([
         "pm10",
@@ -535,10 +555,11 @@ async def marine_forecast(
     sea surface temperature.  Best for coastal and open-ocean locations.
 
     Args:
-        latitude: Decimal latitude (must be over ocean/sea).
-        longitude: Decimal longitude.
+        latitude: Decimal latitude (-90 to 90). Call geocode_location first if you only have a city name.
+        longitude: Decimal longitude (-180 to 180). Call geocode_location first if you only have a city name.
         days: Number of forecast days (1–7, default 5).
     """
+    _check_coords(latitude, longitude)
     days = max(1, min(days, 7))
     hourly_vars = ",".join([
         "wave_height",
@@ -595,12 +616,15 @@ async def pollen_forecast(
     Get hourly pollen forecast for Europe (alder, birch, grass, mugwort,
     olive, and ragweed). Data provided by CAMS European Air Quality forecast.
     Only available for European locations during the pollen season.
+    NOTE: For safety-critical decisions (allergy emergencies, medical conditions), always
+    consult official health authorities and a qualified physician.
 
     Args:
-        latitude: Decimal latitude (European locations only).
-        longitude: Decimal longitude.
+        latitude: Decimal latitude (-90 to 90). Call geocode_location first if you only have a city name.
+        longitude: Decimal longitude (-180 to 180). Call geocode_location first if you only have a city name.
         forecast_days: Number of forecast days (1–4, default 4).
     """
+    _check_coords(latitude, longitude)
     forecast_days = max(1, min(forecast_days, 4))
     hourly_vars = ",".join([
         "alder_pollen",
@@ -691,11 +715,12 @@ async def flood_risk(
     Useful for flood risk assessment, river logistics, and climate research.
 
     Args:
-        latitude: Decimal latitude.
-        longitude: Decimal longitude.
+        latitude: Decimal latitude (-90 to 90). Call geocode_location first if you only have a city name.
+        longitude: Decimal longitude (-180 to 180). Call geocode_location first if you only have a city name.
         forecast_days: Days of forecast to return (1–210, default 30).
         past_days: Days of past reanalysis to prepend (0–92, default 0).
     """
+    _check_coords(latitude, longitude)
     forecast_days = max(1, min(forecast_days, 210))
     past_days = max(0, min(past_days, 92))
     params = {
@@ -766,12 +791,13 @@ async def solar_radiation_forecast(
     Optionally compute irradiance on a tilted panel (global_tilted_irradiance).
 
     Args:
-        latitude: Decimal latitude.
-        longitude: Decimal longitude.
+        latitude: Decimal latitude (-90 to 90). Call geocode_location first if you only have a city name.
+        longitude: Decimal longitude (-180 to 180). Call geocode_location first if you only have a city name.
         days: Forecast horizon in days (1–16, default 7).
         tilt: Panel tilt angle in degrees (0–90). If omitted, GHI only.
         azimuth: Panel azimuth in degrees (0=south, -90=east, 90=west). Required with tilt.
     """
+    _check_coords(latitude, longitude)
     days = max(1, min(days, 16))
     hourly_vars = [
         "shortwave_radiation",
@@ -842,12 +868,15 @@ async def severe_weather_outlook(
     freezing level, wind gusts, and precipitation probability.
     Returns a daily risk level (low / moderate / high / extreme) plus the
     raw instability variables per hour.
+    NOTE: For safety-critical decisions, always consult official meteorological services
+    (NWS, ECMWF, or local weather authority) – do not rely solely on this estimate.
 
     Args:
-        latitude: Decimal latitude.
-        longitude: Decimal longitude.
+        latitude: Decimal latitude (-90 to 90). Call geocode_location first if you only have a city name.
+        longitude: Decimal longitude (-180 to 180). Call geocode_location first if you only have a city name.
         days: Forecast horizon in days (1–7, default 3).
     """
+    _check_coords(latitude, longitude)
     days = max(1, min(days, 7))
     hourly_vars = ",".join([
         "cape",
@@ -961,11 +990,12 @@ async def agricultural_conditions(
     crop management, and agri-insurance workflows.
 
     Args:
-        latitude: Decimal latitude.
-        longitude: Decimal longitude.
+        latitude: Decimal latitude (-90 to 90). Call geocode_location first if you only have a city name.
+        longitude: Decimal longitude (-180 to 180). Call geocode_location first if you only have a city name.
         days: Forecast horizon in days (1–16, default 7).
         temperature_unit: 'celsius' or 'fahrenheit'.
     """
+    _check_coords(latitude, longitude)
     days = max(1, min(days, 16))
     hourly_vars = ",".join([
         # Soil temperature (4 depths)
